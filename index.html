@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0B4619" />
+    <meta name="description" content="Cris Parambu - Sistema simples de vendas, estoque, fiados, dinheiro e aluguéis" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="pt_BR" />
+    <meta property="og:site_name" content="Cris Parambu" />
+    <meta property="og:title" content="Cris Parambu" />
+    <meta property="og:description" content="Cris Parambu - Sistema simples de vendas, estoque, fiados, dinheiro e aluguéis" />
+    <meta property="og:image" content="/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="1200" />
+    <meta property="og:image:alt" content="Cris Parambu" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Cris Parambu" />
+    <meta name="twitter:description" content="Cris Parambu - Sistema simples de vendas, estoque, fiados, dinheiro e aluguéis" />
+    <meta name="twitter:image" content="/og-image.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Cris Parambu" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="preload" as="image" href="/logo.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <title>Cris Parambu</title>
+    <style>
+      #app-splash {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100dvh;
+        min-height: 100vh;
+        z-index: 99999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+        padding: max(28px, env(safe-area-inset-top)) 10px max(24px, env(safe-area-inset-bottom));
+        box-sizing: border-box;
+        background: #ffffff;
+        transition: opacity 320ms ease, transform 320ms ease;
+      }
+      #app-splash.is-hiding {
+        opacity: 0;
+        transform: scale(1.03);
+        pointer-events: none;
+      }
+      .cp-splash-center {
+        flex: 1;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+      .cp-splash-logo-wrap {
+        width: 100%;
+        max-width: min(98vw, 760px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 6px;
+        box-sizing: border-box;
+        animation: cpSplashPop 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+      .cp-splash-logo {
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+      .cp-splash-track {
+        margin-top: 28px;
+        width: min(300px, 80vw);
+        height: 7px;
+        border-radius: 999px;
+        background: #e7e5e4;
+        overflow: hidden;
+      }
+      .cp-splash-bar {
+        height: 100%;
+        width: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #0B4619 0%, #16a34a 55%, #ea580c 100%);
+        transform-origin: left center;
+        animation: cpSplashFill 3000ms cubic-bezier(0.22, 0.8, 0.3, 1) forwards;
+      }
+      .cp-splash-text {
+        margin-top: 14px;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 14px;
+        font-weight: 800;
+        letter-spacing: 0.03em;
+        color: #0B4619;
+      }
+      .cp-splash-footer {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #78716c;
+        text-align: center;
+      }
+      @keyframes cpSplashPop {
+        from {
+          opacity: 0;
+          transform: translateY(12px) scale(0.92);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+      @keyframes cpSplashFill {
+        from {
+          transform: scaleX(0.06);
+        }
+        to {
+          transform: scaleX(1);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .cp-splash-logo-wrap,
+        .cp-splash-bar {
+          animation: none;
+        }
+      }
+    </style>
+  </head>
+  <body class="bg-[#FAF8F5] text-stone-900 antialiased selection:bg-orange-200">
+    <div id="app-splash" aria-label="Carregando Cris Parambu">
+      <div class="cp-splash-center">
+        <div class="cp-splash-logo-wrap">
+          <img src="/logo.png" alt="Cris Parambu" class="cp-splash-logo" />
+        </div>
+        <div class="cp-splash-track" aria-hidden="true">
+          <div class="cp-splash-bar"></div>
+        </div>
+        <div class="cp-splash-text">Abrindo o sistema...</div>
+      </div>
+      <div class="cp-splash-footer">Vendas • Estoque • Fiados • Aluguéis</div>
+    </div>
+    <div id="root"></div>
+    <script>
+      window.__APP_SPLASH_START__ = performance.now();
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

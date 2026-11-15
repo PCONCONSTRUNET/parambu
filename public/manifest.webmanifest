@@ -1,0 +1,26 @@
+{
+  "name": "Cris Parambu",
+  "short_name": "Cris Parambu",
+  "description": "Sistema simples de vendas, produtos, fiados, dinheiro e aluguéis",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0B4619",
+  "theme_color": "#0B4619",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
