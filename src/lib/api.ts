@@ -25,11 +25,50 @@ export function clearApiCache() {
   inFlightGet.clear();
 }
 
+function invalidateCachePrefixes(prefixes: string[]) {
+  cacheGeneration += 1;
+  for (const key of Array.from(getResponseCache.keys())) {
+    if (prefixes.some((p) => key.startsWith(p))) {
+      getResponseCache.delete(key);
+    }
+  }
+  for (const key of Array.from(inFlightGet.keys())) {
+    if (prefixes.some((p) => key.startsWith(p))) {
+      inFlightGet.delete(key);
+    }
+  }
+}
+
+function invalidateCacheForMutation(path: string) {
+  if (path.startsWith('/rentals')) {
+    invalidateCachePrefixes(['/rentals', '/dashboard', '/finance']);
+  } else if (path.startsWith('/sales') || path.startsWith('/debts')) {
+    invalidateCachePrefixes(['/sales', '/debts', '/customers', '/products', '/dashboard', '/finance']);
+  } else if (path.startsWith('/products')) {
+    invalidateCachePrefixes(['/products', '/dashboard', '/finance']);
+  } else if (path.startsWith('/customers')) {
+    invalidateCachePrefixes(['/customers', '/sales', '/dashboard']);
+  } else if (path.startsWith('/finance')) {
+    invalidateCachePrefixes(['/finance', '/dashboard']);
+  } else {
+    clearApiCache();
+  }
+}
+
 setOnRemoteChange(clearApiCache);
 
 export function getCachedApi<T>(path: string): T | undefined {
   const key = normalizeCacheKey(path);
   return getResponseCache.get(key) as T | undefined;
+}
+
+export function prefetchApi<T>(path: string): Promise<T | undefined> {
+  const key = normalizeCacheKey(path);
+  const cached = getResponseCache.get(key);
+  if (cached !== undefined) {
+    return Promise.resolve(cached as T);
+  }
+  return api<T>(key).catch(() => undefined);
 }
 
 function setCachedApi(key: string, data: unknown) {
@@ -116,7 +155,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (method !== 'GET') {
     if (!path.startsWith('/auth/')) {
-      clearApiCache();
+      invalidateCacheForMutation(path);
       broadcastAppChange();
     } else if (path === '/auth/logout' || path === '/auth/login') {
       clearApiCache();

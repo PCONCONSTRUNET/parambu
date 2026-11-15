@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -16,7 +16,7 @@ import {
   UserPlus,
   Users,
 } from 'lucide-react';
-import { api, getCachedApi } from '../lib/api';
+import { api, getCachedApi, prefetchApi, preloadImageUrls } from '../lib/api';
 import { useLiveRefresh } from '../lib/useLiveRefresh';
 import {
   centsToInputString,
@@ -97,7 +97,7 @@ interface RentPaymentRow {
   payment_date: string;
 }
 
-interface RentalsOverviewResponse {
+export interface RentalsOverviewResponse {
   summary: {
     receivedThisMonthCents: number;
     toReceiveCents: number;
@@ -117,6 +117,8 @@ export function RentalsPage() {
   );
   const [tab, setTab] = useState<'properties' | 'tenants' | 'receivables' | 'payments'>('properties');
   const [loading, setLoading] = useState(() => !getCachedApi('/rentals/overview'));
+  const hasOverviewRef = useRef(Boolean(overview));
+  hasOverviewRef.current = Boolean(overview);
 
   // Create Property Modal
   const [newHouseOpen, setNewHouseOpen] = useState(false);
@@ -165,16 +167,18 @@ export function RentalsPage() {
 
   const load = useCallback(
     async (silent = false) => {
-      if (!silent) setLoading(true);
+      const shouldShowLoading = !silent && !hasOverviewRef.current;
+      if (shouldShowLoading) setLoading(true);
       try {
         const res = await api<RentalsOverviewResponse>('/rentals/overview');
         setOverview(res);
+        preloadImageUrls(res.properties.map((p) => p.photo_url));
       } catch (err) {
         if (!silent) {
           showError(err instanceof Error ? err.message : 'Erro ao carregar aluguéis.');
         }
       } finally {
-        if (!silent) setLoading(false);
+        if (shouldShowLoading || !hasOverviewRef.current) setLoading(false);
       }
     },
     [showError],
@@ -182,9 +186,27 @@ export function RentalsPage() {
 
   useEffect(() => {
     const cached = getCachedApi<RentalsOverviewResponse>('/rentals/overview');
-    if (cached) setOverview(cached);
+    if (cached) {
+      setOverview(cached);
+      preloadImageUrls(cached.properties.map((p) => p.photo_url));
+    }
     load(Boolean(cached));
   }, [load]);
+
+  useEffect(() => {
+    if (!overview?.properties.length) return;
+    let cancelled = false;
+    const warmProperties = async () => {
+      for (const prop of overview.properties.slice(0, 10)) {
+        if (cancelled) break;
+        await prefetchApi(`/rentals/properties/${prop.id}`);
+      }
+    };
+    void warmProperties();
+    return () => {
+      cancelled = true;
+    };
+  }, [overview]);
 
   useLiveRefresh(() => load(true));
 
@@ -236,7 +258,7 @@ export function RentalsPage() {
       setHouseDueDay('10');
       setHousePhotoUrl(null);
       setNewHouseOpen(false);
-      await load();
+      await load(true);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Erro ao salvar casa.');
     } finally {
@@ -318,7 +340,7 @@ export function RentalsPage() {
       showSuccess('Inquilino cadastrado e cobrança gerada!');
       setNewTenantOpen(false);
       setTab('tenants');
-      await load();
+      await load(true);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Erro ao cadastrar inquilino.');
     } finally {
@@ -338,20 +360,32 @@ export function RentalsPage() {
     return `${nextYear}-${String(nextMonth).padStart(2, '0')}`;
   };
 
-  const applyLeaseSelection = (lease: LeaseRow) => {
-    setRegLeaseId(String(lease.id));
-    setTenantPickerOpen(false);
-    setMonthPickerOpen(false);
-    const openForLease = receivables.filter((r) => r.lease_id === lease.id);
-    if (openForLease.length > 0) {
-      setRegChargeChoice(String(openForLease[0].id));
-      setRegAmountText(centsToInputString(openForLease[0].remaining_cents));
-    } else {
-      setRegChargeChoice('CUSTOM_MONTH');
-      setRegCustomMonth(suggestCustomMonthForLease(lease.id));
-      setRegAmountText(centsToInputString(lease.monthly_rent_cents));
+  const applyLeaseSelection = useCallback(
+    (lease: LeaseRow) => {
+      setRegLeaseId(String(lease.id));
+      setTenantPickerOpen(false);
+      setMonthPickerOpen(false);
+      const openForLease = receivables.filter((r) => r.lease_id === lease.id);
+      if (openForLease.length > 0) {
+        setRegChargeChoice(String(openForLease[0].id));
+        setRegAmountText(centsToInputString(openForLease[0].remaining_cents));
+      } else {
+        setRegChargeChoice('CUSTOM_MONTH');
+        setRegCustomMonth(suggestCustomMonthForLease(lease.id));
+        setRegAmountText(centsToInputString(lease.monthly_rent_cents));
+      }
+    },
+    [receivables, payments],
+  );
+
+  useEffect(() => {
+    if (!regPayOpen || regLeaseId || payableLeases.length === 0) return;
+    const defaultLease =
+      payableLeases.find((l) => l.open_debt_cents > 0) ?? payableLeases[0];
+    if (defaultLease) {
+      applyLeaseSelection(defaultLease);
     }
-  };
+  }, [regPayOpen, regLeaseId, payableLeases, applyLeaseSelection]);
 
   const openRegisterPaymentModal = () => {
     const defaultLease =
@@ -395,7 +429,7 @@ export function RentalsPage() {
         ? `Aluguel pago! ${formatBRL(res.paidCents)}`
         : `Recebido ${formatBRL(res.paidCents)}! Ainda falta ${formatBRL(res.remainingCents)}.`,
     );
-    await load();
+    await load(true);
   };
 
   const handleConfirmPay = async (e: React.FormEvent) => {
@@ -644,6 +678,7 @@ export function RentalsPage() {
               <Link
                 key={p.id}
                 to={`/alugueis/${p.id}`}
+                onPointerDown={() => void prefetchApi(`/rentals/properties/${p.id}`)}
                 className="block bg-white rounded-2xl border-2 border-stone-300 hover:border-[#0B4619] p-3.5 transition"
               >
                 <div className="flex items-center gap-3">
@@ -706,6 +741,7 @@ export function RentalsPage() {
               <Link
                 key={l.id}
                 to={`/alugueis/${l.property_id}`}
+                onPointerDown={() => void prefetchApi(`/rentals/properties/${l.property_id}`)}
                 className="block bg-white rounded-2xl border-2 border-stone-200 hover:border-[#0B4619] p-4"
               >
                 <div className="flex items-start justify-between gap-2">
@@ -802,6 +838,7 @@ export function RentalsPage() {
                   </button>
                   <Link
                     to={`/alugueis/${c.property_id}`}
+                    onPointerDown={() => void prefetchApi(`/rentals/properties/${c.property_id}`)}
                     className="py-3 rounded-xl bg-stone-100 hover:bg-stone-200 border-2 border-stone-300 text-stone-800 font-extrabold text-sm text-center"
                   >
                     Ver Casa
@@ -824,6 +861,7 @@ export function RentalsPage() {
             <Link
               key={p.id}
               to={`/alugueis/${p.property_id}`}
+              onPointerDown={() => void prefetchApi(`/rentals/properties/${p.property_id}`)}
               className="block bg-white rounded-2xl border border-stone-200 p-3.5"
             >
               <div className="flex items-center justify-between gap-2">
@@ -1151,7 +1189,12 @@ export function RentalsPage() {
         onClose={() => setRegPayOpen(false)}
         title="Registrar Pagamento do Aluguel"
       >
-        {payableLeases.length === 0 ? (
+        {loading && !overview ? (
+          <div className="py-8 text-center space-y-2">
+            <div className="h-12 rounded-2xl bg-stone-200 animate-pulse" />
+            <p className="text-sm font-bold text-stone-500">Carregando imóveis e inquilinos...</p>
+          </div>
+        ) : payableLeases.length === 0 ? (
           <div className="text-center py-4 space-y-4">
             <Users className="w-12 h-12 text-stone-300 mx-auto" />
             <div className="space-y-1">

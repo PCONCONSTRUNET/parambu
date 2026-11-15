@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { api, preloadImageUrls } from './lib/api';
+import { api, preloadImageUrls, prefetchApi } from './lib/api';
 import { monthStartLocalISO, todayLocalISO } from './lib/format';
 import { FeedbackProvider } from './components/FeedbackContext';
 import { Layout } from './components/Layout';
@@ -36,7 +36,18 @@ function warmInitialCache() {
     api('/products/movements'),
     api('/customers?filter=all'),
     api('/customers'),
-    api('/rentals/overview'),
+    api<{ properties?: Array<{ id: number; photo_url?: string | null }> }>('/rentals/overview').then(
+      (res) => {
+        const props = res.properties ?? [];
+        preloadImageUrls(props.map((p) => p.photo_url));
+        void (async () => {
+          for (const prop of props.slice(0, 6)) {
+            await prefetchApi(`/rentals/properties/${prop.id}`);
+          }
+        })();
+        return res;
+      },
+    ),
     api(`/finance?${financeQs}`),
   ]);
 }

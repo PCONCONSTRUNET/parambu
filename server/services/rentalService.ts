@@ -578,49 +578,48 @@ export async function getPropertyDetail(db: AppDatabase, propertyId: number) {
   await ensureMonthlyRentCharges(db);
   const today = todayBR();
 
-  const property = await db.get<Record<string, unknown>>(
-    'SELECT * FROM properties WHERE id = ?',
-    [propertyId],
-  );
+  const [property, leases, chargesRaw, payments] = await Promise.all([
+    db.get<Record<string, unknown>>(
+      'SELECT * FROM properties WHERE id = ?',
+      [propertyId],
+    ),
+    db.all<Record<string, unknown>>(
+      'SELECT * FROM leases WHERE property_id = ? ORDER BY id DESC',
+      [propertyId],
+    ),
+    db.all<{
+      id: number;
+      lease_id: number;
+      property_id: number;
+      reference_month: string;
+      due_date: string;
+      amount_cents: number;
+      paid_cents: number;
+      status: string;
+      tenant_name: string;
+    }>(
+      `SELECT rc.*, l.tenant_name
+       FROM rent_charges rc
+       JOIN leases l ON l.id = rc.lease_id
+       WHERE rc.property_id = ? AND rc.status != 'CANCELLED'
+       ORDER BY rc.reference_month DESC, rc.id DESC`,
+      [propertyId],
+    ),
+    db.all(
+      `SELECT rp.*, l.tenant_name, rc.reference_month
+       FROM rent_payments rp
+       JOIN leases l ON l.id = rp.lease_id
+       JOIN rent_charges rc ON rc.id = rp.rent_charge_id
+       WHERE rp.property_id = ?
+       ORDER BY rp.payment_date DESC, rp.id DESC`,
+      [propertyId],
+    ),
+  ]);
+
   if (!property) throw new AppError('Imóvel não encontrado.', 404, 'NOT_FOUND');
 
-  const leases = await db.all<Record<string, unknown>>(
-    'SELECT * FROM leases WHERE property_id = ? ORDER BY id DESC',
-    [propertyId],
-  );
-
   const activeLease = leases.find((l) => l.status === 'ACTIVE') || null;
-
-  const chargesRaw = await db.all<{
-    id: number;
-    lease_id: number;
-    property_id: number;
-    reference_month: string;
-    due_date: string;
-    amount_cents: number;
-    paid_cents: number;
-    status: string;
-    tenant_name: string;
-  }>(
-    `SELECT rc.*, l.tenant_name
-     FROM rent_charges rc
-     JOIN leases l ON l.id = rc.lease_id
-     WHERE rc.property_id = ? AND rc.status != 'CANCELLED'
-     ORDER BY rc.reference_month DESC, rc.id DESC`,
-    [propertyId],
-  );
-
   const charges = chargesRaw.map((c) => decorateChargeStatus(c, today));
-
-  const payments = await db.all(
-    `SELECT rp.*, l.tenant_name, rc.reference_month
-     FROM rent_payments rp
-     JOIN leases l ON l.id = rp.lease_id
-     JOIN rent_charges rc ON rc.id = rp.rent_charge_id
-     WHERE rp.property_id = ?
-     ORDER BY rp.payment_date DESC, rp.id DESC`,
-    [propertyId],
-  );
 
   const totalDebtCents = charges
     .filter((c) => c.status === 'PENDING' || c.status === 'PARTIAL')

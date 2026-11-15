@@ -13,7 +13,7 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-40 bg-black/60 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-2 sm:p-4"
+      className="fixed inset-0 z-40 bg-black/60 flex items-end sm:items-center justify-center p-2 sm:p-4"
       onClick={onClose}
     >
       <div

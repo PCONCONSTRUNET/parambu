@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -14,7 +14,8 @@ import {
   UserMinus,
   UserPlus,
 } from 'lucide-react';
-import { api } from '../lib/api';
+import { api, getCachedApi } from '../lib/api';
+import type { RentalsOverviewResponse } from './RentalsPage';
 import { useLiveRefresh } from '../lib/useLiveRefresh';
 import {
   centsToInputString,
@@ -81,12 +82,79 @@ interface PropertyDetailData {
   totalDebtCents: number;
 }
 
+function buildInitialPropertyDetail(propertyId: number): PropertyDetailData | null {
+  const exact = getCachedApi<PropertyDetailData>(`/rentals/properties/${propertyId}`);
+  if (exact) return exact;
+  const overview = getCachedApi<RentalsOverviewResponse>('/rentals/overview');
+  if (!overview) return null;
+  const prop = overview.properties.find((p) => p.id === propertyId);
+  if (!prop) return null;
+  const propLeases = overview.leases.filter((l) => l.property_id === propertyId);
+  const activeLease = propLeases.find((l) => l.status === 'ACTIVE') ?? null;
+  const openCharges = overview.receivables
+    .filter((r) => r.property_id === propertyId)
+    .map((r) => ({
+      id: r.id,
+      reference_month: r.reference_month,
+      due_date: r.due_date,
+      amount_cents: r.amount_cents,
+      paid_cents: r.paid_cents,
+      remaining_cents: r.remaining_cents,
+      tenant_name: r.tenant_name,
+      display_status: r.display_status,
+    }));
+  const propPayments = overview.payments
+    .filter((p) => p.property_id === propertyId)
+    .map((p) => ({
+      id: p.id,
+      amount_cents: p.amount_cents,
+      payment_method: p.payment_method,
+      payment_date: p.payment_date,
+      tenant_name: p.tenant_name,
+      reference_month: p.reference_month,
+    }));
+  return {
+    property: {
+      id: prop.id,
+      name: prop.name,
+      address: prop.address,
+      photo_url: prop.photo_url,
+      monthly_rent_cents: prop.monthly_rent_cents,
+      due_day: prop.due_day,
+      status: prop.status,
+    },
+    activeLease: activeLease
+      ? {
+          id: activeLease.id,
+          tenant_name: activeLease.tenant_name,
+          tenant_phone: activeLease.tenant_phone,
+          monthly_rent_cents: activeLease.monthly_rent_cents,
+          due_day: activeLease.due_day,
+          start_date: activeLease.start_date,
+        }
+      : null,
+    leases: propLeases.map((l) => ({
+      id: l.id,
+      tenant_name: l.tenant_name,
+      start_date: l.start_date,
+      end_date: l.end_date,
+      status: l.status,
+    })),
+    charges: openCharges,
+    payments: propPayments,
+    totalDebtCents: prop.total_debt_cents,
+  };
+}
+
 export function PropertyDetailPage() {
   const { id } = useParams();
   const propertyId = Number(id);
 
-  const [data, setData] = useState<PropertyDetailData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<PropertyDetailData | null>(() =>
+    buildInitialPropertyDetail(propertyId),
+  );
+  const [loading, setLoading] = useState(() => !buildInitialPropertyDetail(propertyId));
+  const loadedPropertyIdRef = useRef<number | null>(data ? propertyId : null);
 
   // Lease Modal (create or edit active lease)
   const [leaseOpen, setLeaseOpen] = useState(false);
@@ -117,24 +185,37 @@ export function PropertyDetailPage() {
 
   const load = useCallback(
     async (silent = false) => {
-      if (!silent) setLoading(true);
+      const hasCurrentData = loadedPropertyIdRef.current === propertyId;
+      const shouldShowLoading = !silent && !hasCurrentData;
+      if (shouldShowLoading) setLoading(true);
       try {
         const res = await api<PropertyDetailData>(`/rentals/properties/${propertyId}`);
+        loadedPropertyIdRef.current = propertyId;
         setData(res);
       } catch (err) {
         if (!silent) {
           showError(err instanceof Error ? err.message : 'Erro ao abrir imóvel.');
         }
       } finally {
-        if (!silent) setLoading(false);
+        setLoading(false);
       }
     },
     [propertyId, showError],
   );
 
   useEffect(() => {
-    load();
-  }, [load]);
+    const initial = buildInitialPropertyDetail(propertyId);
+    if (initial) {
+      loadedPropertyIdRef.current = propertyId;
+      setData(initial);
+      setLoading(false);
+    } else if (loadedPropertyIdRef.current !== propertyId) {
+      loadedPropertyIdRef.current = null;
+      setData(null);
+      setLoading(true);
+    }
+    load(Boolean(initial));
+  }, [load, propertyId]);
 
   useLiveRefresh(() => load(true));
 
@@ -192,7 +273,7 @@ export function PropertyDetailPage() {
       }
       setLeaseOpen(false);
       setEditingLeaseId(null);
-      await load();
+      await load(true);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Erro ao salvar locação.');
     } finally {
@@ -229,7 +310,7 @@ export function PropertyDetailPage() {
     try {
       await api(`/rentals/payments/${paymentId}`, { method: 'DELETE' });
       showSuccess('Recebimento de aluguel estornado!');
-      await load();
+      await load(true);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Erro ao estornar recebimento.');
     }
@@ -247,7 +328,7 @@ export function PropertyDetailPage() {
     try {
       await api(`/rentals/leases/${data.activeLease.id}/end`, { method: 'POST' });
       showSuccess('Locação encerrada! Imóvel está livre novamente.');
-      await load();
+      await load(true);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Erro ao encerrar locação.');
     }
@@ -292,7 +373,7 @@ export function PropertyDetailPage() {
           ? `Aluguel pago! ${formatBRL(res.paidCents)}`
           : `Recebido ${formatBRL(res.paidCents)}! Ainda falta ${formatBRL(res.remainingCents)}.`,
       );
-      await load();
+      await load(true);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Erro ao receber aluguel.');
     } finally {
@@ -325,7 +406,7 @@ export function PropertyDetailPage() {
       });
       showSuccess('Imóvel atualizado!');
       setEditOpen(false);
-      await load();
+      await load(true);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Erro ao editar imóvel.');
     }

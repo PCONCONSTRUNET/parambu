@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cris-parambu-v13';
+const CACHE_NAME = 'cris-parambu-v14';
 const STATIC_ASSETS = [
   '/',
   '/manifest.webmanifest',

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -12,7 +12,7 @@ import {
   RotateCcw,
   Trash2,
 } from 'lucide-react';
-import { api } from '../lib/api';
+import { api, getCachedApi } from '../lib/api';
 import { downloadPaymentReceiptPdf } from '../lib/pdfReceipt';
 import { useLiveRefresh } from '../lib/useLiveRefresh';
 import {
@@ -85,8 +85,11 @@ export function CustomerDetailPage() {
   const { id } = useParams();
   const customerId = Number(id);
 
-  const [data, setData] = useState<CustomerDetailData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<CustomerDetailData | null>(
+    () => getCachedApi<CustomerDetailData>(`/customers/${customerId}`) ?? null,
+  );
+  const [loading, setLoading] = useState(() => !getCachedApi(`/customers/${customerId}`));
+  const loadedCustomerIdRef = useRef<number | null>(data ? customerId : null);
 
   // Payment Modal
   const [payOpen, setPayOpen] = useState(false);
@@ -114,16 +117,18 @@ export function CustomerDetailPage() {
 
   const load = useCallback(
     async (silent = false) => {
-      if (!silent) setLoading(true);
+      const hasCurrentData = loadedCustomerIdRef.current === customerId;
+      if (!silent && !hasCurrentData) setLoading(true);
       try {
         const res = await api<CustomerDetailData>(`/customers/${customerId}`);
+        loadedCustomerIdRef.current = customerId;
         setData(res);
       } catch (err) {
         if (!silent) {
           showError(err instanceof Error ? err.message : 'Erro ao abrir cliente.');
         }
       } finally {
-        if (!silent) setLoading(false);
+        setLoading(false);
       }
     },
     [customerId, showError],
@@ -142,8 +147,18 @@ export function CustomerDetailPage() {
   };
 
   useEffect(() => {
-    load();
-  }, [load]);
+    const cached = getCachedApi<CustomerDetailData>(`/customers/${customerId}`);
+    if (cached) {
+      loadedCustomerIdRef.current = customerId;
+      setData(cached);
+      setLoading(false);
+    } else if (loadedCustomerIdRef.current !== customerId) {
+      loadedCustomerIdRef.current = null;
+      setData(null);
+      setLoading(true);
+    }
+    load(Boolean(cached));
+  }, [load, customerId]);
 
   useLiveRefresh(() => load(true));
 
@@ -198,7 +213,7 @@ export function CustomerDetailPage() {
           `Recebido ${formatBRL(res.paidCents)}! Ainda falta ${formatBRL(res.remainingCents ?? 0)}.`,
         );
       }
-      await load();
+      await load(true);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Erro ao receber pagamento.');
     } finally {
@@ -231,7 +246,7 @@ export function CustomerDetailPage() {
       });
       showSuccess('Dados do cliente salvos!');
       setEditOpen(false);
-      await load();
+      await load(true);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Erro ao salvar.');
     }
@@ -268,7 +283,7 @@ export function CustomerDetailPage() {
     try {
       await api(`/debts/payments/${paymentId}`, { method: 'DELETE' });
       showSuccess('Pagamento estornado!');
-      await load();
+      await load(true);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Erro ao estornar pagamento.');
     }
