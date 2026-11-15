@@ -7,7 +7,7 @@ let cachedAppPromise = null;
 async function getApp() {
   if (!cachedAppPromise) {
     cachedAppPromise = (async () => {
-      const db = await createDatabase(config.databaseUrl, { maxConnections: 5 });
+      const db = await createDatabase(config.databaseUrl, { maxConnections: 2 });
       return createApp(db, config);
     })().catch((err) => {
       cachedAppPromise = null;

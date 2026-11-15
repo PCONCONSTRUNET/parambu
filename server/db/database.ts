@@ -101,11 +101,12 @@ export async function createDatabase(
   }
 
   const schemaName = options?.schema?.trim();
+  const isServerless = process.env.VERCEL === '1';
   const pool = new pg.Pool({
     connectionString,
     ssl: shouldUseSsl(connectionString) ? { rejectUnauthorized: false } : false,
-    max: options?.maxConnections ?? 15,
-    idleTimeoutMillis: 30_000,
+    max: options?.maxConnections ?? (isServerless ? 2 : 5),
+    idleTimeoutMillis: isServerless ? 5_000 : 15_000,
     connectionTimeoutMillis: 15_000,
     keepAlive: true,
     ...(schemaName ? { options: `-c search_path=${schemaName},public` } : {}),
