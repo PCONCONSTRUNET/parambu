@@ -283,9 +283,12 @@ export function PropertyDetailPage() {
 
   const handleDeleteProperty = async () => {
     if (!data) return;
+    const hasOpenOrActive = Boolean(data.activeLease) || data.totalDebtCents > 0;
     const confirmed = await confirmAction({
       title: 'Excluir imóvel?',
-      message: `Tem certeza que deseja excluir o imóvel "${data.property.name}"?`,
+      message: hasOpenOrActive
+        ? `Excluir "${data.property.name}" mesmo com locação ou cobranças em aberto? As cobranças pendentes serão canceladas e o que já foi pago continua salvo no caixa.`
+        : `Tem certeza que deseja excluir o imóvel "${data.property.name}"?`,
       confirmLabel: 'Sim, excluir',
       tone: 'danger',
     });

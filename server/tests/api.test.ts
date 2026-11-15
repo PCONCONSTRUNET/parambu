@@ -267,6 +267,12 @@ describe('Cris Parambu - API HTTP ponta a ponta', () => {
     });
     expect(endLeaseRes.status).toBe(200);
 
+    const delPropWithOpenCharge = await fetch(`${baseUrl}/rentals/properties/${property.id}`, {
+      method: 'DELETE',
+      headers: { Cookie: cookieHeader },
+    });
+    expect(delPropWithOpenCharge.status).toBe(200);
+
     const freePropRes = await fetch(`${baseUrl}/rentals/properties`, {
       method: 'POST',
       headers: authHeaders,

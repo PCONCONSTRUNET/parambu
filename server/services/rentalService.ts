@@ -483,37 +483,34 @@ export async function updateLease(db: AppDatabase, leaseId: number, input: Updat
 }
 
 export async function deleteProperty(db: AppDatabase, id: number) {
-  const prop = await db.get("SELECT id FROM properties WHERE id = ? AND status != 'INACTIVE'", [id]);
-  if (!prop) throw new AppError('Imóvel não encontrado.', 404, 'NOT_FOUND');
+  return runInTransaction(db, async () => {
+    const prop = await db.get("SELECT id FROM properties WHERE id = ? AND status != 'INACTIVE'", [id]);
+    if (!prop) throw new AppError('Imóvel não encontrado.', 404, 'NOT_FOUND');
 
-  const activeLease = await db.get(
-    "SELECT id FROM leases WHERE property_id = ? AND status = 'ACTIVE'",
-    [id],
-  );
-  if (activeLease) {
-    throw new AppError('Encerre a locação atual antes de excluir este imóvel.');
-  }
+    const today = todayBR();
+    await db.run(
+      "UPDATE leases SET status = 'ENDED', end_date = COALESCE(end_date, ?) WHERE property_id = ? AND status = 'ACTIVE'",
+      [today, id],
+    );
 
-  const openCharge = await db.get(
-    "SELECT id FROM rent_charges WHERE property_id = ? AND status IN ('PENDING', 'PARTIAL')",
-    [id],
-  );
-  if (openCharge) {
-    throw new AppError('Este imóvel ainda possui cobranças de aluguel em aberto.');
-  }
+    await db.run(
+      "UPDATE rent_charges SET status = 'CANCELLED' WHERE property_id = ? AND status IN ('PENDING', 'PARTIAL')",
+      [id],
+    );
 
-  const leasesCount = (await db.get<{ cnt: number }>(
-    'SELECT COUNT(*) AS cnt FROM leases WHERE property_id = ?',
-    [id],
-  )) ?? { cnt: 0 };
+    const leasesCount = (await db.get<{ cnt: number }>(
+      'SELECT COUNT(*) AS cnt FROM leases WHERE property_id = ?',
+      [id],
+    )) ?? { cnt: 0 };
 
-  if (leasesCount.cnt === 0) {
-    await db.run('DELETE FROM properties WHERE id = ?', [id]);
-  } else {
-    await db.run("UPDATE properties SET status = 'INACTIVE' WHERE id = ?", [id]);
-  }
+    if (leasesCount.cnt === 0) {
+      await db.run('DELETE FROM properties WHERE id = ?', [id]);
+    } else {
+      await db.run("UPDATE properties SET status = 'INACTIVE' WHERE id = ?", [id]);
+    }
 
-  return { deleted: true, id };
+    return { deleted: true, id };
+  });
 }
 
 export async function reverseRentPayment(db: AppDatabase, paymentId: number) {
@@ -961,6 +958,7 @@ export async function getRentalsOverview(db: AppDatabase) {
          ), 0) AS total_paid_cents
        FROM leases l
        JOIN properties p ON p.id = l.property_id
+       WHERE p.status != 'INACTIVE'
        ORDER BY CASE WHEN l.status = 'ACTIVE' THEN 0 ELSE 1 END, l.id DESC`,
     ),
     db.all(
