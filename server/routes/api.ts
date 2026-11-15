@@ -247,6 +247,11 @@ export function createApiRouter(db: AppDatabase, config: AppConfig) {
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders?.();
+    if (process.env.VERCEL === '1') {
+      res.write('retry: 30000\n: serverless\n\n');
+      res.end();
+      return;
+    }
     res.write(': connected\n\n');
     sseClients.add(res);
 
